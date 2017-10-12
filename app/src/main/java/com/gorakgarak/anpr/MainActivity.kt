@@ -120,6 +120,11 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
         val matThreshold: Mat = Mat()
         Imgproc.threshold(matSobel, matThreshold, 0.0, 255.0, Imgproc.THRESH_OTSU + Imgproc.THRESH_BINARY)
 
+        Log.d(TAG, "1-4) Threshold")
+        val element: Mat = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(17.0, 3.0))
+        Imgproc.morphologyEx(matThreshold, matThreshold, CV_MOP_CLOSE, element)
+
+
 
         return matThreshold
     }
