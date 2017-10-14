@@ -131,8 +131,9 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
         Imgproc.morphologyEx(matThreshold, matThreshold, Imgproc.MORPH_CLOSE, element)
 
         Log.d(TAG, "1-5) Find contour of possible plates")
-        val contourList: List<MatOfPoint> = emptyList()
-        Imgproc.findContours(matThreshold, contourList, null, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_NONE)
+        val contourList: List<MatOfPoint> = mutableListOf()
+        val hierarchy = Mat()
+        Imgproc.findContours(matThreshold, contourList, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_NONE)
 
         Log.d(TAG, "1-6) Get rectangle from the contours")
         val rectList: MutableList<RotatedRect> = mutableListOf()
