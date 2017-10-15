@@ -10,20 +10,25 @@ import android.util.Log
 import android.view.SurfaceView
 import android.view.WindowManager
 import android.widget.Toast
+import com.gorakgarak.anpr.model.CharSegment
+import com.gorakgarak.anpr.model.Plate
+import com.gorakgarak.anpr.utils.CustomImageProc
 import org.opencv.android.BaseLoaderCallback
 import org.opencv.android.CameraBridgeViewBase
 import org.opencv.android.LoaderCallbackInterface
 import org.opencv.android.OpenCVLoader
 import org.opencv.core.*
-import org.opencv.core.CvType.CV_8UC1
+import org.opencv.core.Core.countNonZero
+import org.opencv.core.Core.minMaxLoc
 import org.opencv.imgproc.Imgproc
 import org.opencv.imgproc.Imgproc.*
 import java.util.*
 import org.opencv.core.CvType
+import org.opencv.core.CvType.*
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.MatOfPoint
-
-
+import org.opencv.core.RotatedRect
+import org.opencv.ml.SVM
 
 
 class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListener2 {
@@ -152,13 +157,169 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
         input.copyTo(result)
         drawContours(result, contourList, -1, Scalar(200.0, 0.0, 0.0), 1)
 
-        Log.d(TAG, "1-6) Floodfill algorithm from more clear contour box")
-        floodFill(input, result, rectList)
+        Log.d(TAG, "1-7) Floodfill algorithm from more clear contour box, get plates candidates")
+        val plateCandidates = getPlateCandidatesFromImage(input, result, rectList)
+
+        Log.d(TAG, "2-1) Set initial SVM Params")
+        val trainDataMat = Mat()
+        val classes = Mat()
+
+        var svm = SVM.create()
+        svm.type = SVM.C_SVC
+        svm.degree = 0.0
+        svm.gamma = 1.0
+        svm.coef0 = 0.0
+        svm.c = 1.0
+        svm.nu = 0.0
+        svm.p = 0.0
+        svm.termCriteria = TermCriteria(TermCriteria.MAX_ITER, 1000, 0.01)
+        svm.setKernel(SVM.LINEAR)
+
+//        svm.train() //TODO: train params
+
+        Log.d(TAG, "2-2) Using svmClassifier, predict number plates")
+        val plates = mutableListOf<Plate>()
+        plateCandidates.forEach { candidate ->
+            val p = candidate.img.reshape(1,1)
+            p.convertTo(p, CV_32FC1)
+            val response = svm.predict(p)
+            if (response == 1f) plates.add(candidate)
+        }
+
+        Log.d(TAG, "${plates.size} plates has been detected")
+
+        Log.d(TAG, "3-1) OCR")
+        plates.forEach { plate -> getStringFromOcr(plate.img) }
+
 
         return result
     }
 
-    fun floodFill(input: Mat, result:Mat, rects: MutableList<RotatedRect>) {
+    private fun getStringFromOcr(plate: Mat): List<CharSegment> {
+
+        val output: MutableList<CharSegment> = mutableListOf()
+
+        val thresholdMat = Mat()
+        threshold(plate, thresholdMat, 60.0, 255.0, THRESH_BINARY_INV)
+
+        val contouredMat = Mat()
+        thresholdMat.copyTo(contouredMat)
+
+        val contourList: List<MatOfPoint> = mutableListOf()
+        val hierarchy = Mat()
+        Imgproc.findContours(contouredMat, contourList, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_NONE)
+
+        val result = Mat()
+        thresholdMat.copyTo(result)
+        cvtColor(result, result, COLOR_GRAY2RGB)
+        drawContours(result, contourList, -1, Scalar(255.0, 0.0, 0.0), 1)
+
+        //Convert MapOfPoint to MatOfPoint2f
+        contourList.forEach { contour ->
+
+            val mr: Rect = boundingRect(contour)
+            rectangle(result, mr.tl(), mr.br(), Scalar(255.0, 0.0, 0.0))
+
+            val auxRoi =  Mat(thresholdMat, mr)
+            if (verifySizeForChar(auxRoi)) {
+                val preprocessedChar = preprocessChar(auxRoi)
+                output.add(CharSegment(auxRoi, mr))
+                rectangle(result, mr.tl(), mr.br(), Scalar(0.0, 125.0, 255.0))
+            }
+        }
+        return output
+    }
+
+    //TODO: t 가 뭔지 살펴봐야함.
+    fun getProjectedHistogram(img: Mat, t: Int):Mat {
+        val size = if (t == 1) img.rows() else img.cols()
+        val mhist = Mat.zeros(1, size, CV_32F)
+
+        (0 until size).forEach {
+            val data = if( t == 1 ) img.row(it) else img.col(it)
+            mhist.put(0, it, intArrayOf(countNonZero(data)))
+        }
+
+        val loc = minMaxLoc(mhist)
+        if (loc.maxVal > 0) mhist.convertTo(mhist, -1, 1.0f/loc.maxVal, 0.0)
+
+        return mhist
+
+    }
+
+    fun getFeatures(inMat: Mat, sizeData: Double): Mat {
+        val VERTICAL = 1
+        val HORIZONTAL = 2
+
+        val vhist = getProjectedHistogram(inMat, VERTICAL)
+        val hhist = getProjectedHistogram(inMat, HORIZONTAL)
+
+        val lowData = Mat()
+        resize(inMat, lowData, Size(sizeData, sizeData))
+
+        val numCols = vhist.cols() + hhist.cols() + lowData.cols() * lowData.cols()
+        val output = Mat.zeros(1, numCols, CV_32F)
+
+        var j = 0;
+
+        (0 until vhist.cols()).forEach {
+            output.put(0, j, vhist.get(0, it).map { it.toFloat() }.toFloatArray() )
+            j++
+        }
+
+        (0 until hhist.cols()).forEach {
+            output.put(0, j, hhist.get(0, it).map { it.toFloat() }.toFloatArray() )
+            j++
+        }
+
+        (0 until lowData.cols()).forEach {
+            (0 until lowData.rows()).forEach {
+                output.put(0, j, lowData.get(0, it).map { it.toFloat() }.toFloatArray())
+            }
+        }
+
+        return output
+
+    }
+
+
+
+    private fun preprocessChar(auxRoi: Mat): Mat {
+
+
+
+
+    }
+
+
+    fun verifySizeForChar(r: Mat): Boolean {
+
+        val aspect=45.0f/77.0f;
+        val charAspect= r.cols()/r.rows();
+        val error=0.35;
+        val minHeight=15;
+        val maxHeight=28;
+
+        //We have a different aspect ratio for number 1, and it can be ~0.2
+        val minAspect=0.2;
+        val maxAspect=aspect+aspect*error;
+
+        //area of pixels
+        val area = countNonZero(r);
+
+        //bb area
+        val bbArea=r.cols()*r.rows();
+
+        //% of pixel in area
+        val percPixels=area/bbArea;
+        return percPixels < 0.8 && charAspect > minAspect && charAspect <
+                maxAspect && r.rows() >= minHeight && r.rows() < maxHeight
+        
+    }
+
+    fun getPlateCandidatesFromImage(input: Mat, result:Mat, rects: MutableList<RotatedRect>): List<Plate> {
+
+        val output = mutableListOf<Plate>()
 
         rects.forEach { rect ->
             //For better rect cropping for each possible box
@@ -189,20 +350,72 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
                 val area = floodFill(input, mask, seed, Scalar(255.0, 0.0, 0.0), ccomp , Scalar(loDiff, loDiff, loDiff), Scalar(upDiff, upDiff, upDiff), flags)
             }
 
-//            val pointsOfInterest: List<Point> = mutableListOf()
+            //Check new floodfill mask match for a correct patch.
+            //Get all points detected for get Minimal rotated Rect
+            val pointsInterestList: MutableList<Point> = mutableListOf()
 
-//            vector<Point> pointsInterest;
-//            Mat_<uchar>::iterator itMask= mask.begin<uchar>();
-//            Mat_<uchar>::iterator end= mask.end<uchar>();
-//            for( ; itMask!=end; ++itMask)
-//            if(*itMask==255)
-//            pointsInterest.push_back(itMask.pos());
+            (0 until mask.cols()).forEach { col ->
+                (0 until mask.rows()).forEach { row ->
+                    if (mask.get(row,col)[0] == 255.0) {
+                        val point = Point(col.toDouble(), row.toDouble())
+                        pointsInterestList.add(point)
+                    }
+                }
+            }
+
+            val m2fFromList = MatOfPoint2f()
+            m2fFromList.fromList(pointsInterestList) //create MatOfPoint2f from list of points
+            val m2f = MatOfPoint2f()
+            m2fFromList.convertTo(m2f, CvType.CV_32FC2) //convert to type of MatOfPoint2f created from list of points
+
+            val minRect = Imgproc.minAreaRect(m2fFromList)
+
+            if (!verifySizes(minRect)) { return output }
+
+            // rotated rectangle drawing
+
+            val rectPoints = MatOfPoint2f().toArray()
+
+            minRect.points(rectPoints)
+
+            (0 .. 4).forEach { line(result, rectPoints.get(it), rectPoints.get((it+1)%4), Scalar(0.0, 0.0, 255.0), 1) }
+
+            val r = minRect.size.width / minRect.size.height
+            var angle = minRect.angle
+            if (r < 1) angle = 90 + angle
+
+            val rotatedMat = Mat()
+            warpAffine(input, rotatedMat, getRotationMatrix2D(minRect.center, angle, 1.0), input.size(), INTER_CUBIC) //TODO: 이거 같은가 봐야함.
+
+            val rectSize = minRect.size
+            if (r < 1) {
+                val h = rectSize.height
+                val w = rectSize.width
+                rectSize.height = w
+                rectSize.width = h
+            }
+
+            val cropMat = Mat()
+            getRectSubPix(rotatedMat, rectSize, minRect.center, cropMat)
+
+            val resizedResultMat = Mat()
+            resizedResultMat.create(33, 144, CV_8UC3)
+            resize(cropMat, resizedResultMat, resizedResultMat.size(), 0.0, 0.0, INTER_CUBIC)
+
+            //Equalized cropped image
+            val grayResultMat = Mat()
+            cvtColor(resizedResultMat, grayResultMat, COLOR_BGR2GRAY) //TODO: 상수확인
+            blur(grayResultMat, grayResultMat, Size(3.0,3.0))
+
+            //Plate Candidates Here
+            output.add(Plate(grayResultMat, minRect.boundingRect()))
 
         }
 
-
+        return output
 
     }
+
 
 
     fun verifySizes(candidate: RotatedRect): Boolean {
