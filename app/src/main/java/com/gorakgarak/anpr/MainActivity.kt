@@ -142,10 +142,12 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
         contourList.forEach {
             val p = MatOfPoint2f()
             it.convertTo(p, CvType.CV_32F)
-            rectList.add(Imgproc.minAreaRect(p))
+            val img = Imgproc.minAreaRect(p)
+            if (verifySizes(img)) rectList.add(Imgproc.minAreaRect(p))
         }
 
         val input = inputFrame.rgba()
+        cvtColor(input, input, COLOR_RGBA2RGB)
         val result = Mat()
         input.copyTo(result)
         drawContours(result, contourList, -1, Scalar(200.0, 0.0, 0.0), 1)
@@ -158,17 +160,17 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
 
     fun floodFill(input: Mat, result:Mat, rects: MutableList<RotatedRect>) {
 
-        rects.forEach {
+        rects.forEach { rect ->
             //For better rect cropping for each possible box
             //Make floodfill algorithm because the plate has white background
             //And then we can retrieve more clearly the contour box
-            circle(result, it.center, 3, Scalar(0.0,255.0,0.0), -1);
+            circle(result, rect.center, 3, Scalar(0.0,255.0,0.0), -1);
 
-            val minSize = if (it.size.width < it.size.height) it.size.width * 0.5 else it.size.height * 0.5
+            val minSize = if (rect.size.width < rect.size.height) rect.size.width * 0.5 else rect.size.height * 0.5
 
             var mask: Mat = Mat()
             mask.create(input.rows() + 2, input.cols() + 2, CvType.CV_8UC1)
-            mask = Mat.zeros(mask.size(), CvType.CV_8UC3)
+            mask = Mat.zeros(mask.size(), CvType.CV_8UC1)
 
             val loDiff = 30.0
             val upDiff = 30.0
@@ -178,11 +180,11 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
             val ccomp : Rect = Rect()
             val flags = connectivity + (newMaskVal.shl(8) + FLOODFILL_FIXED_RANGE + FLOODFILL_MASK_ONLY)
 
-            (0 .. seedNum).forEach {
+            (0 .. seedNum).forEach { sn ->
                 val num = Random().nextInt()
                 val seed:Point = Point()
-                seed.x=rects.get(it).center.x + num % (minSize-(minSize/2))
-                seed.y=rects.get(it).center.y + num % (minSize-(minSize/2))
+                seed.x=rect.center.x + num % (minSize-(minSize/2))
+                seed.y=rect.center.y + num % (minSize-(minSize/2))
                 circle(result, seed, 1, Scalar(0.0,255.0,255.0), -1);
                 val area = floodFill(input, mask, seed, Scalar(255.0, 0.0, 0.0), ccomp , Scalar(loDiff, loDiff, loDiff), Scalar(upDiff, upDiff, upDiff), flags)
             }
