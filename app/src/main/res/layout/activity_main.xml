@@ -14,4 +14,17 @@
             android:layout_width="fill_parent"
             android:layout_height="fill_parent"
             android:id="@+id/main_surface" />
+
+    <TextView
+        android:id="@+id/text_numberplate"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="50sp"
+        android:layout_alignParentRight="true"
+        android:textColor="@android:color/white"
+        android:background="@android:color/black"
+        tools:text="70S2034"
+        />
+
+
 </RelativeLayout>

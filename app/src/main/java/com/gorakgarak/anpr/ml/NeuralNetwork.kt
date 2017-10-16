@@ -1,5 +1,6 @@
 package com.gorakgarak.anpr.ml
 
+import android.content.Context
 import org.opencv.core.Core
 import org.opencv.core.CvType.CV_32FC1
 import org.opencv.core.CvType.CV_32SC1
@@ -10,25 +11,45 @@ import org.opencv.ml.ANN_MLP
 /**
  * Created by kohry on 2017-10-15.
  */
-object ANN {
+object NeuralNetwork {
 
-    val strCharacters = arrayOf('0','1','2','3','4','5','6','7','8','9','B', 'C', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'P', 'R', 'S', 'T', 'V', 'W', 'X', 'Y', 'Z')
-    val numCharacters = 30
-    val ann = ANN_MLP.create()
+    private val CAHR_COUNT = 30
+    private val LAYER_COUNT = 10
 
-    fun train(trainData: Mat, classes: Mat, nlayers: Int) {
+    private val strCharacters = arrayOf('0','1','2','3','4','5','6','7','8','9','B', 'C', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'P', 'R', 'S', 'T', 'V', 'W', 'X', 'Y', 'Z')
+
+    val ann: ANN_MLP = ANN_MLP.create()
+
+    private fun readXML(context: Context, fileName: String): Pair<Mat, Mat> {
+        val inputStream = context.assets.open(fileName)
+        val train = Mat()
+        val classes = Mat()
+
+//        train.put
+
+        return Pair(train, classes)
+
+    }
+
+    fun train(context: Context) {
+
+        val data = readXML(context, "OCR.xml")
+
+        val trainData = data.first
+        val classes = data.second
+
         val layerSizes = Mat(1,3,CV_32SC1)
         val r = trainData.rows()
         val c = trainData.cols()
 
         (0 until r).forEach { layerSizes.put(0, it, trainData.get(0, it).map { it.toInt() }.toIntArray()) }
-        (0 until r).forEach { layerSizes.put(1, it, nlayers) }
-        (0 until r).forEach { layerSizes.put(2, it, numCharacters) }
+//        (0 until r).forEach { layerSizes.put(1, it, nlayers) }
+//        (0 until r).forEach { layerSizes.put(2, it, CAHR_COUNT) }
 
         ann.setActivationFunction(ANN_MLP.SIGMOID_SYM)
 
         val trainClasses = Mat()
-        trainClasses.create(trainClasses.rows(), numCharacters, CV_32FC1)
+        trainClasses.create(trainClasses.rows(), CAHR_COUNT, CV_32FC1)
         (0 until trainClasses.rows()).forEach { row ->
             (0 until trainClasses.cols()).forEach { col ->
                 //:TODO 이거 도대체 어떠케 하는거야? at method 잘알필요있다.
@@ -42,7 +63,7 @@ object ANN {
 
     fun classify(f: Mat): Double {
         val result = -1
-        val output = Mat(1, numCharacters, CV_32FC1)
+        val output = Mat(1, CAHR_COUNT, CV_32FC1)
         ann.predict(f)
         val minMaxLoc = Core.minMaxLoc(output)
 

@@ -10,16 +10,18 @@ import android.util.Log
 import android.view.SurfaceView
 import android.view.WindowManager
 import android.widget.Toast
+import com.gorakgarak.anpr.ml.NeuralNetwork
+import com.gorakgarak.anpr.ml.SupportVector
 import com.gorakgarak.anpr.model.CharSegment
 import com.gorakgarak.anpr.model.Plate
 import com.gorakgarak.anpr.utils.CustomImageProc
+import kotlinx.android.synthetic.main.activity_main.*
 import org.opencv.android.BaseLoaderCallback
 import org.opencv.android.CameraBridgeViewBase
 import org.opencv.android.LoaderCallbackInterface
 import org.opencv.android.OpenCVLoader
 import org.opencv.core.*
-import org.opencv.core.Core.countNonZero
-import org.opencv.core.Core.minMaxLoc
+import org.opencv.core.Core.*
 import org.opencv.imgproc.Imgproc
 import org.opencv.imgproc.Imgproc.*
 import java.util.*
@@ -57,6 +59,12 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_main)
 
+        //When first created, train SVM Data. Don't forget to show progress wheel.
+        SupportVector.train(this@MainActivity)
+
+        //train OCR by Artificial Neural Network
+        NeuralNetwork.train(this@MainActivity)
+
         // Permissions for Android 6+
         ActivityCompat.requestPermissions(this@MainActivity,
                 arrayOf(Manifest.permission.CAMERA),
@@ -66,6 +74,8 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
         _cameraBridgeViewBase!!.visibility = SurfaceView.VISIBLE
         _cameraBridgeViewBase!!.setCvCameraViewListener(this)
     }
+
+
 
     public override fun onPause() {
         super.onPause()
@@ -160,37 +170,22 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
         Log.d(TAG, "1-7) Floodfill algorithm from more clear contour box, get plates candidates")
         val plateCandidates = getPlateCandidatesFromImage(input, result, rectList)
 
-        Log.d(TAG, "2-1) Set initial SVM Params")
-        val trainDataMat = Mat()
-        val classes = Mat()
-
-        var svm = SVM.create()
-        svm.type = SVM.C_SVC
-        svm.degree = 0.0
-        svm.gamma = 1.0
-        svm.coef0 = 0.0
-        svm.c = 1.0
-        svm.nu = 0.0
-        svm.p = 0.0
-        svm.termCriteria = TermCriteria(TermCriteria.MAX_ITER, 1000, 0.01)
-        svm.setKernel(SVM.LINEAR)
-
-//        svm.train() //TODO: train params
-
-        Log.d(TAG, "2-2) Using svmClassifier, predict number plates")
+        Log.d(TAG, "2-2) Using trained svmClassifier, let's predict number plates")
         val plates = mutableListOf<Plate>()
         plateCandidates.forEach { candidate ->
             val p = candidate.img.reshape(1,1)
             p.convertTo(p, CV_32FC1)
-            val response = svm.predict(p)
+            val response = SupportVector.getSvmClassifier()?.predict(p)?:0
             if (response == 1f) plates.add(candidate)
         }
 
         Log.d(TAG, "${plates.size} plates has been detected")
 
-        Log.d(TAG, "3-1) OCR")
-        plates.forEach { plate -> getStringFromOcr(plate.img) }
-
+        Log.d(TAG, "3-1) with predicted car plates and trained ANN Classifier, get Strings")
+        plates.forEach { plate ->
+            val number = getStringFromOcr(plate.img)
+            text_numberplate.text = number.toString()
+        }
 
         return result
     }
@@ -222,7 +217,7 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
 
             val auxRoi =  Mat(thresholdMat, mr)
             if (verifySizeForChar(auxRoi)) {
-                val preprocessedChar = preprocessChar(auxRoi)
+//                val preprocessedChar = preprocessChar(auxRoi)
                 output.add(CharSegment(auxRoi, mr))
                 rectangle(result, mr.tl(), mr.br(), Scalar(0.0, 125.0, 255.0))
             }
@@ -281,16 +276,6 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
         return output
 
     }
-
-
-
-    private fun preprocessChar(auxRoi: Mat): Mat {
-
-
-
-
-    }
-
 
     fun verifySizeForChar(r: Mat): Boolean {
 
@@ -403,9 +388,10 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
             resize(cropMat, resizedResultMat, resizedResultMat.size(), 0.0, 0.0, INTER_CUBIC)
 
             //Equalized cropped image
-            val grayResultMat = Mat()
+            var grayResultMat = Mat()
             cvtColor(resizedResultMat, grayResultMat, COLOR_BGR2GRAY) //TODO: 상수확인
             blur(grayResultMat, grayResultMat, Size(3.0,3.0))
+            grayResultMat = histeq(grayResultMat)
 
             //Plate Candidates Here
             output.add(Plate(grayResultMat, minRect.boundingRect()))
@@ -416,6 +402,22 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
 
     }
 
+    private fun histeq(input: Mat): Mat {
+        val output = Mat(input.size(), input.type())
+        when (input.channels()) {
+            3 -> {
+                val hsv = Mat()
+                val hsvSplit:List<Mat> = emptyList()
+                cvtColor(input, hsv, COLOR_BGR2HSV)
+                split(hsv, hsvSplit)
+                equalizeHist(hsvSplit[2], hsvSplit[2])
+                merge(hsvSplit, hsv)
+                cvtColor(hsv, output, COLOR_HSV2BGR)
+            }
+            1 -> equalizeHist(input, output)
+        }
+        return output
+    }
 
 
     fun verifySizes(candidate: RotatedRect): Boolean {
