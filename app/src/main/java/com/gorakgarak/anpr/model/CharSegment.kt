@@ -6,4 +6,4 @@ import org.opencv.core.Rect
 /**
  * Created by kohry on 2017-10-15.
  */
-data class CharSegment (val i: Mat, val p: Rect)
+data class CharSegment (val image: Mat, val rect: Rect)

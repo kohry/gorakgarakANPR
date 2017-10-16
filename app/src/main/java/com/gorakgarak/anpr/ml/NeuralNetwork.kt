@@ -13,10 +13,10 @@ import org.opencv.ml.ANN_MLP
  */
 object NeuralNetwork {
 
-    private val CAHR_COUNT = 30
-    private val LAYER_COUNT = 10
+    val CHAR_COUNT = 30
+    val LAYER_COUNT = 10
 
-    private val strCharacters = arrayOf('0','1','2','3','4','5','6','7','8','9','B', 'C', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'P', 'R', 'S', 'T', 'V', 'W', 'X', 'Y', 'Z')
+    val strCharacters = arrayOf('0','1','2','3','4','5','6','7','8','9','B', 'C', 'D', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'P', 'R', 'S', 'T', 'V', 'W', 'X', 'Y', 'Z')
 
     val ann: ANN_MLP = ANN_MLP.create()
 
@@ -44,12 +44,12 @@ object NeuralNetwork {
 
         (0 until r).forEach { layerSizes.put(0, it, trainData.get(0, it).map { it.toInt() }.toIntArray()) }
 //        (0 until r).forEach { layerSizes.put(1, it, nlayers) }
-//        (0 until r).forEach { layerSizes.put(2, it, CAHR_COUNT) }
+//        (0 until r).forEach { layerSizes.put(2, it, CHAR_COUNT) }
 
         ann.setActivationFunction(ANN_MLP.SIGMOID_SYM)
 
         val trainClasses = Mat()
-        trainClasses.create(trainClasses.rows(), CAHR_COUNT, CV_32FC1)
+        trainClasses.create(trainClasses.rows(), CHAR_COUNT, CV_32FC1)
         (0 until trainClasses.rows()).forEach { row ->
             (0 until trainClasses.cols()).forEach { col ->
                 //:TODO 이거 도대체 어떠케 하는거야? at method 잘알필요있다.
@@ -63,7 +63,7 @@ object NeuralNetwork {
 
     fun classify(f: Mat): Double {
         val result = -1
-        val output = Mat(1, CAHR_COUNT, CV_32FC1)
+        val output = Mat(1, CHAR_COUNT, CV_32FC1)
         ann.predict(f)
         val minMaxLoc = Core.minMaxLoc(output)
 

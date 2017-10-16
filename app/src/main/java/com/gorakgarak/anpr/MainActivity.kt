@@ -11,10 +11,11 @@ import android.view.SurfaceView
 import android.view.WindowManager
 import android.widget.Toast
 import com.gorakgarak.anpr.ml.NeuralNetwork
+import com.gorakgarak.anpr.ml.NeuralNetwork.CHAR_COUNT
+import com.gorakgarak.anpr.ml.NeuralNetwork.strCharacters
 import com.gorakgarak.anpr.ml.SupportVector
 import com.gorakgarak.anpr.model.CharSegment
 import com.gorakgarak.anpr.model.Plate
-import com.gorakgarak.anpr.utils.CustomImageProc
 import kotlinx.android.synthetic.main.activity_main.*
 import org.opencv.android.BaseLoaderCallback
 import org.opencv.android.CameraBridgeViewBase
@@ -30,7 +31,6 @@ import org.opencv.core.CvType.*
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.MatOfPoint
 import org.opencv.core.RotatedRect
-import org.opencv.ml.SVM
 
 
 class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListener2 {
@@ -183,14 +183,29 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
 
         Log.d(TAG, "3-1) with predicted car plates and trained ANN Classifier, get Strings")
         plates.forEach { plate ->
-            val number = getStringFromOcr(plate.img)
-            text_numberplate.text = number.toString()
+            plate.str = ""
+            val charSegments = getCharSegmentFromOcr(plate.img) //remeber this is not characeter but image segments
+            charSegments.forEach { charCandidate ->
+                val ch = preprocessChar(charCandidate.image)
+                val f = getFeatures(ch, 15.0)
+                val charResult = classifyWithANNModel(f)
+                val str = strCharacters[charResult.toInt()]
+                plate.str = plate.str + str
+            }
+            text_numberplate.text = plate.str
         }
-
         return result
     }
 
-    private fun getStringFromOcr(plate: Mat): List<CharSegment> {
+    private fun classifyWithANNModel(f: Mat):Double {
+        var result = -1
+        val output = Mat(1, CHAR_COUNT, CV_32FC1)
+        NeuralNetwork.ann.predict(f)
+        val loc = minMaxLoc(output)
+        return loc.maxLoc.x
+    }
+
+    private fun getCharSegmentFromOcr(plate: Mat): List<CharSegment> {
 
         val output: MutableList<CharSegment> = mutableListOf()
 
@@ -200,28 +215,47 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
         val contouredMat = Mat()
         thresholdMat.copyTo(contouredMat)
 
+        //Find contours of possibles characters
         val contourList: List<MatOfPoint> = mutableListOf()
         val hierarchy = Mat()
         Imgproc.findContours(contouredMat, contourList, hierarchy, Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_NONE)
 
+        //Find contours of possibles characters
         val result = Mat()
         thresholdMat.copyTo(result)
         cvtColor(result, result, COLOR_GRAY2RGB)
         drawContours(result, contourList, -1, Scalar(255.0, 0.0, 0.0), 1)
 
-        //Convert MapOfPoint to MatOfPoint2f
+        //Remove patch that are no inside limits of aspect ratio and area.
         contourList.forEach { contour ->
 
             val mr: Rect = boundingRect(contour)
             rectangle(result, mr.tl(), mr.br(), Scalar(255.0, 0.0, 0.0))
 
-            val auxRoi =  Mat(thresholdMat, mr)
+            var auxRoi =  Mat(thresholdMat, mr)
             if (verifySizeForChar(auxRoi)) {
-//                val preprocessedChar = preprocessChar(auxRoi)
+                auxRoi = preprocessChar(auxRoi)
                 output.add(CharSegment(auxRoi, mr))
                 rectangle(result, mr.tl(), mr.br(), Scalar(0.0, 125.0, 255.0))
             }
         }
+        return output
+    }
+
+    fun preprocessChar(input: Mat): Mat {
+        val h = input.rows()
+        val w = input.cols()
+        val transformMat = Mat.eye(2,3, CV_32F)
+        val m = Math.max(w, h)
+        transformMat.put(0, 2, (m/2 - w/2).toDouble())
+        transformMat.put(1, 2, (m/2 - w/2).toDouble())
+
+        val warpImage = Mat(m, m, input.type())
+        warpAffine(input, warpImage, transformMat, warpImage.size(), INTER_LINEAR, BORDER_CONSTANT, Scalar(0.0) )
+        val output = Mat(0)
+        val charSize = 20.0
+        resize(warpImage, output, Size(charSize, charSize))
+
         return output
     }
 
@@ -394,7 +428,7 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
             grayResultMat = histeq(grayResultMat)
 
             //Plate Candidates Here
-            output.add(Plate(grayResultMat, minRect.boundingRect()))
+            output.add(Plate(grayResultMat, minRect.boundingRect(),""))
 
         }
 
