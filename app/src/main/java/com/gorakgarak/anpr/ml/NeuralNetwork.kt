@@ -1,6 +1,7 @@
 package com.gorakgarak.anpr.ml
 
 import android.content.Context
+import org.bytedeco.javacpp.opencv_core
 import org.opencv.core.Core
 import org.opencv.core.CvType.CV_32FC1
 import org.opencv.core.CvType.CV_32SC1
@@ -21,11 +22,12 @@ object NeuralNetwork {
     val ann: ANN_MLP = ANN_MLP.create()
 
     private fun readXML(context: Context, fileName: String): Pair<Mat, Mat> {
-        val inputStream = context.assets.open(fileName)
-        val train = Mat()
-        val classes = Mat()
+//        val inputStream = context.assets.open(fileName)
+        val fs = opencv_core.FileStorage()
+        fs.open(fileName,opencv_core.FileStorage.READ)
 
-//        train.put
+        val train = Mat(fs["TrainingDataF15"].mat().address())
+        val classes = Mat(fs["classes"].mat().address())
 
         return Pair(train, classes)
 

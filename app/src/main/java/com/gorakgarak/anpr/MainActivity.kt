@@ -62,7 +62,7 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
         //When first created, train SVM Data. Don't forget to show progress wheel.
         SupportVector.train(this@MainActivity)
 
-        //train OCR by Artificial Neural Network
+        //train OCR.xml by Artificial Neural Network
         NeuralNetwork.train(this@MainActivity)
 
         // Permissions for Android 6+
@@ -455,6 +455,8 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
 
 
     fun verifySizes(candidate: RotatedRect): Boolean {
+
+
 
         val error = 0.4
         val aspect = 4.7272

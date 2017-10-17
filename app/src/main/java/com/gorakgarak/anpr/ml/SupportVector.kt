@@ -3,6 +3,7 @@ package com.gorakgarak.anpr.ml
 import android.content.Context
 import android.util.Log
 import com.gorakgarak.anpr.MainActivity
+import org.bytedeco.javacpp.opencv_core
 import org.opencv.core.Mat
 import org.opencv.core.TermCriteria
 import org.opencv.ml.Ml.ROW_SAMPLE
@@ -23,11 +24,11 @@ object SupportVector {
     //This is one method to read XML file from assets.
     //Pretty sucks.
     private fun readXML(context:Context, fileName: String): Pair<Mat, Mat> {
-        val inputStream = context.assets.open(fileName)
-        val train = Mat()
-        val classes = Mat()
+        val fs = opencv_core.FileStorage()
+        fs.open(fileName, opencv_core.FileStorage.READ)
 
-//        train.put
+        val train = Mat(fs["TrainingData"].mat().address())
+        val classes = Mat(fs["classes"].mat().address())
 
         return Pair(train, classes)
 
@@ -38,7 +39,7 @@ object SupportVector {
     //Don't you think?? KKUL KKUL
     fun train(context: Context) {
 
-        val data = readXML(context, "OCR.xml")
+        val data = readXML(context, "SVM.xml")
 
         Log.d(TAG, "Set initial SVM Params")
         val dataMat = data.first
