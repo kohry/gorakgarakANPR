@@ -17,10 +17,8 @@ import com.gorakgarak.anpr.ml.SupportVector
 import com.gorakgarak.anpr.model.CharSegment
 import com.gorakgarak.anpr.model.Plate
 import kotlinx.android.synthetic.main.activity_main.*
-import org.opencv.android.BaseLoaderCallback
-import org.opencv.android.CameraBridgeViewBase
-import org.opencv.android.LoaderCallbackInterface
-import org.opencv.android.OpenCVLoader
+import org.bytedeco.javacpp.opencv_imgproc.CV_AA
+import org.opencv.android.*
 import org.opencv.core.*
 import org.opencv.core.Core.*
 import org.opencv.imgproc.Imgproc
@@ -60,10 +58,10 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
         setContentView(R.layout.activity_main)
 
         //When first created, train SVM Data. Don't forget to show progress wheel.
-        SupportVector.train(this@MainActivity)
+//        SupportVector.train(this@MainActivity)
 
         //train OCR.xml by Artificial Neural Network
-        NeuralNetwork.train(this@MainActivity)
+//        NeuralNetwork.train(this@MainActivity)
 
         // Permissions for Android 6+
         ActivityCompat.requestPermissions(this@MainActivity,
@@ -161,39 +159,49 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
             if (verifySizes(img)) rectList.add(Imgproc.minAreaRect(p))
         }
 
+        //draw contour on original colored image to fetch white number plate.
         val input = inputFrame.rgba()
         cvtColor(input, input, COLOR_RGBA2RGB)
         val result = Mat()
         input.copyTo(result)
-        drawContours(result, contourList, -1, Scalar(200.0, 0.0, 0.0), 1)
+        //So many contours detected
+//        drawContours(result, contourList, -1, Scalar(200.0, 0.0, 0.0), 1) // more than 100~
+
+        val logoMat = Utils.loadResource(this, R.mipmap.ic_launcher)
+        cvtColor(logoMat, logoMat, COLOR_RGBA2RGB)
+
+        rectList.forEach { rect -> //temp rectangle to findout the rectangle candidate. mostly 3~100
+            rectangle(result, rect.boundingRect().tl(), rect.boundingRect().br(), Scalar(0.0, 200.0, 0.0))
+            putText(result, "Xeed Lab Detected!", rect.boundingRect().tl(), FONT_HERSHEY_COMPLEX, 0.8, Scalar(200.0,0.0,0.0), 2)
+        }
 
         Log.d(TAG, "1-7) Floodfill algorithm from more clear contour box, get plates candidates")
-        val plateCandidates = getPlateCandidatesFromImage(input, result, rectList)
+//        val plateCandidates = getPlateCandidatesFromImage(input, result, rectList)
 
-        Log.d(TAG, "2-2) Using trained svmClassifier, let's predict number plates")
-        val plates = mutableListOf<Plate>()
-        plateCandidates.forEach { candidate ->
-            val p = candidate.img.reshape(1,1)
-            p.convertTo(p, CV_32FC1)
-            val response = SupportVector.getSvmClassifier()?.predict(p)?:0
-            if (response == 1f) plates.add(candidate)
-        }
-
-        Log.d(TAG, "${plates.size} plates has been detected")
-
-        Log.d(TAG, "3-1) with predicted car plates and trained ANN Classifier, get Strings")
-        plates.forEach { plate ->
-            plate.str = ""
-            val charSegments = getCharSegmentFromOcr(plate.img) //remeber this is not characeter but image segments
-            charSegments.forEach { charCandidate ->
-                val ch = preprocessChar(charCandidate.image)
-                val f = getFeatures(ch, 15.0)
-                val charResult = classifyWithANNModel(f)
-                val str = strCharacters[charResult.toInt()]
-                plate.str = plate.str + str
-            }
-            text_numberplate.text = plate.str
-        }
+//        Log.d(TAG, "2-2) Using trained svmClassifier, let's predict number plates")
+//        val plates = mutableListOf<Plate>()
+//        plateCandidates.forEach { candidate ->
+//            val p = candidate.img.reshape(1,1)
+//            p.convertTo(p, CV_32FC1)
+//            val response = SupportVector.getSvmClassifier()?.predict(p)?:0
+//            if (response == 1f) plates.add(candidate)
+//        }
+//
+//        Log.d(TAG, "${plates.size} plates has been detected")
+//
+//        Log.d(TAG, "3-1) with predicted car plates and trained ANN Classifier, get Strings")
+//        plates.forEach { plate ->
+//            plate.str = ""
+//            val charSegments = getCharSegmentFromOcr(plate.img) //remeber this is not characeter but image segments
+//            charSegments.forEach { charCandidate ->
+//                val ch = preprocessChar(charCandidate.image)
+//                val f = getFeatures(ch, 15.0)
+//                val charResult = classifyWithANNModel(f)
+//                val str = strCharacters[charResult.toInt()]
+//                plate.str = plate.str + str
+//            }
+//            text_numberplate.text = plate.str
+//        }
         return result
     }
 
@@ -336,7 +344,7 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
         
     }
 
-    fun getPlateCandidatesFromImage(input: Mat, result:Mat, rects: MutableList<RotatedRect>): List<Plate> {
+    private fun getPlateCandidatesFromImage(input: Mat, result:Mat, rects: MutableList<RotatedRect>): List<Plate> {
 
         val output = mutableListOf<Plate>()
 
@@ -348,7 +356,7 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
 
             val minSize = if (rect.size.width < rect.size.height) rect.size.width * 0.5 else rect.size.height * 0.5
 
-            var mask: Mat = Mat()
+            var mask = Mat()
             mask.create(input.rows() + 2, input.cols() + 2, CvType.CV_8UC1)
             mask = Mat.zeros(mask.size(), CvType.CV_8UC1)
 
@@ -397,7 +405,7 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
 
             minRect.points(rectPoints)
 
-            (0 .. 4).forEach { line(result, rectPoints.get(it), rectPoints.get((it+1)%4), Scalar(0.0, 0.0, 255.0), 1) }
+            (0 .. 4).forEach { line(result, rectPoints[it], rectPoints[(it+1)%4], Scalar(0.0, 0.0, 255.0), 1) }
 
             val r = minRect.size.width / minRect.size.height
             var angle = minRect.angle
