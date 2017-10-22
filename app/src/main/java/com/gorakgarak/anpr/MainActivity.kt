@@ -17,7 +17,6 @@ import com.gorakgarak.anpr.ml.SupportVector
 import com.gorakgarak.anpr.model.CharSegment
 import com.gorakgarak.anpr.model.Plate
 import kotlinx.android.synthetic.main.activity_main.*
-import org.bytedeco.javacpp.opencv_imgproc.CV_AA
 import org.opencv.android.*
 import org.opencv.core.*
 import org.opencv.core.Core.*
@@ -57,12 +56,6 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         setContentView(R.layout.activity_main)
 
-        //When first created, train SVM Data. Don't forget to show progress wheel.
-//        SupportVector.train(this@MainActivity)
-
-        //train OCR.xml by Artificial Neural Network
-//        NeuralNetwork.train(this@MainActivity)
-
         // Permissions for Android 6+
         ActivityCompat.requestPermissions(this@MainActivity,
                 arrayOf(Manifest.permission.CAMERA),
@@ -71,6 +64,8 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
         _cameraBridgeViewBase = findViewById(R.id.main_surface) as CameraBridgeViewBase
         _cameraBridgeViewBase!!.visibility = SurfaceView.VISIBLE
         _cameraBridgeViewBase!!.setCvCameraViewListener(this)
+
+
     }
 
 
@@ -89,6 +84,12 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
             Log.d(TAG, "OpenCV library found inside package. Using it!")
             _baseLoaderCallback.onManagerConnected(LoaderCallbackInterface.SUCCESS)
         }
+
+        //When first created, train SVM Data. Don't forget to show progress wheel.
+//        SupportVector.train(this@MainActivity)
+
+        //train OCR.xml by Artificial Neural Network
+//        NeuralNetwork.train(this@MainActivity)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {

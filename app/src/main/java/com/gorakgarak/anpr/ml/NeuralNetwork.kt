@@ -1,13 +1,16 @@
 package com.gorakgarak.anpr.ml
 
 import android.content.Context
-import org.bytedeco.javacpp.opencv_core
+import com.gorakgarak.anpr.R
+import com.gorakgarak.anpr.parser.GorakgarakXMLParser
 import org.opencv.core.Core
 import org.opencv.core.CvType.CV_32FC1
 import org.opencv.core.CvType.CV_32SC1
 import org.opencv.core.Mat
 import org.opencv.core.Scalar
 import org.opencv.ml.ANN_MLP
+import org.opencv.ml.Ml.ROW_SAMPLE
+import java.io.FileInputStream
 
 /**
  * Created by kohry on 2017-10-15.
@@ -21,21 +24,22 @@ object NeuralNetwork {
 
     val ann: ANN_MLP = ANN_MLP.create()
 
-    private fun readXML(context: Context, fileName: String): Pair<Mat, Mat> {
+    private fun readXML(context: Context): Pair<Mat, Mat> {
 //        val inputStream = context.assets.open(fileName)
-        val fs = opencv_core.FileStorage()
-        fs.open(fileName,opencv_core.FileStorage.READ)
-
-        val train = Mat(fs["TrainingDataF15"].mat().address())
-        val classes = Mat(fs["classes"].mat().address())
-
-        return Pair(train, classes)
+//        val fs = opencv_core.FileStorage()
+//        fs.open(fileName,opencv_core.FileStorage.READ)
+//
+//        val train = Mat(fs["TrainingDataF15"].mat().address())
+//        val classes = Mat(fs["classes"].mat().address())
+        return GorakgarakXMLParser.parse(context.resources.openRawResource(R.raw.ann),"TrainingDataF15")
 
     }
 
     fun train(context: Context) {
 
-        val data = readXML(context, "OCR.xml")
+        if (ann.isTrained) return
+
+        val data = readXML(context)
 
         val trainData = data.first
         val classes = data.second
@@ -44,22 +48,24 @@ object NeuralNetwork {
         val r = trainData.rows()
         val c = trainData.cols()
 
-        (0 until r).forEach { layerSizes.put(0, it, trainData.get(0, it).map { it.toInt() }.toIntArray()) }
-//        (0 until r).forEach { layerSizes.put(1, it, nlayers) }
-//        (0 until r).forEach { layerSizes.put(2, it, CHAR_COUNT) }
+        layerSizes.put(0, 0, intArrayOf(trainData.cols()))
+        layerSizes.put(0, 1, intArrayOf(LAYER_COUNT))
+        layerSizes.put(0, 2, intArrayOf(CHAR_COUNT))
 
+        ann.layerSizes = layerSizes
         ann.setActivationFunction(ANN_MLP.SIGMOID_SYM)
 
         val trainClasses = Mat()
-        trainClasses.create(trainClasses.rows(), CHAR_COUNT, CV_32FC1)
+        trainClasses.create(trainData.rows(), CHAR_COUNT, CV_32FC1)
         (0 until trainClasses.rows()).forEach { row ->
             (0 until trainClasses.cols()).forEach { col ->
-                //:TODO 이거 도대체 어떠케 하는거야? at method 잘알필요있다.
+                if (col == classes.get(row, 0).get(0).toInt()) trainClasses.put(row, col, floatArrayOf(1f))
+                else trainClasses.put(col, row, floatArrayOf(0f))
             }
         }
-
-        val weights = Mat(1, trainData.rows(), CV_32FC1, Scalar.all(1.0))
-        ann.train(trainData, 0, weights)  //:TODO 여기서 가운데 인자 뭘로 줘야하는가? trainclasses는 쓰이지가 않는다.
+        //this part has changed from opencv 2 -> 3. ann class does not need weights anymore.
+//        val weights = Mat(1, trainData.rows(), CV_32FC1, Scalar.all(1.0))
+        ann.train(trainData, ROW_SAMPLE, trainClasses)
 
     }
 
