@@ -172,36 +172,36 @@ class MainActivity : AppCompatActivity(), CameraBridgeViewBase.CvCameraViewListe
         rectList.forEach { rect ->
             //temp rectangle to findout the rectangle candidate. mostly 3~100
             rectangle(result, rect.boundingRect().tl(), rect.boundingRect().br(), Scalar(0.0, 200.0, 0.0), 3)
-            putText(result, "Xeed Lab Detected!", rect.boundingRect().tl(), FONT_HERSHEY_COMPLEX, 0.8, Scalar(200.0, 0.0, 0.0), 2)
+            putText(result, "Edge Detected!", rect.boundingRect().tl(), FONT_HERSHEY_COMPLEX, 0.8, Scalar(200.0, 0.0, 0.0), 2)
         }
 
         Log.d(TAG, "1-7) Floodfill algorithm from more clear contour box, get plates candidates")
         val plateCandidates = getPlateCandidatesFromImage(input, result, rectList)
 
-        Log.d(TAG, "2-2) Using trained svmClassifier, let's predict number plates")
-        val plates = mutableListOf<Plate>()
-        plateCandidates.forEach { candidate ->
-            val p = candidate.img.reshape(1, 1)
-            p.convertTo(p, CV_32FC1)
-            val response = SupportVector.getSvmClassifier()?.predict(p) ?: 0
-            if (response == 1f) plates.add(candidate)
-        }
+//        Log.d(TAG, "2-2) Using trained svmClassifier, let's predict number plates")
+//        val plates = mutableListOf<Plate>()
+//        plateCandidates.forEach { candidate ->
+//            val p = candidate.img.reshape(1, 1)
+//            p.convertTo(p, CV_32FC1)
+//            val response = SupportVector.getSvmClassifier()?.predict(p) ?: 0
+//            if (response == 1f) plates.add(candidate)
+//        }
+////
+//        Log.d(TAG, "${plates.size} plates has been detected")
 //
-        Log.d(TAG, "${plates.size} plates has been detected")
-
-        Log.d(TAG, "3-1) with predicted car plates and trained ANN Classifier, get Strings")
-        plates.forEach { plate ->
-            plate.str = ""
-            val charSegments = getCharSegmentFromOcr(plate.img) //remeber this is not characeter but image segments
-            charSegments.forEach { charCandidate ->
-                val ch = preprocessChar(charCandidate.image)
-                val f = getFeatures(ch, 15.0)
-                val charResult = classifyWithANNModel(f)
-                val str = strCharacters[charResult.toInt()]
-                plate.str = plate.str + str
-            }
-            text_numberplate.text = plate.str
-        }
+//        Log.d(TAG, "3-1) with predicted car plates and trained ANN Classifier, get Strings")
+//        plates.forEach { plate ->
+//            plate.str = ""
+//            val charSegments = getCharSegmentFromOcr(plate.img) //remeber this is not characeter but image segments
+//            charSegments.forEach { charCandidate ->
+//                val ch = preprocessChar(charCandidate.image)
+//                val f = getFeatures(ch, 15.0)
+//                val charResult = classifyWithANNModel(f)
+//                val str = strCharacters[charResult.toInt()]
+//                plate.str = plate.str + str
+//            }
+//            text_numberplate.text = plate.str
+//        }
 
         return result
     }
